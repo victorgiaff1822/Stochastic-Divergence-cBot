@@ -6,6 +6,15 @@ using cAlgo.API.Collections;
 using cAlgo.API.Indicators;
 using cAlgo.API.Internals;
 
+/*
+ * Best Current Settings
+ * 
+ * WMA Period: 4
+ * Array Size: 1500
+ * Order Size: 2
+ * Stop Loss Pips: 1400
+ */
+
 namespace cAlgo.Robots
 {
     [Robot(AccessRights = AccessRights.None, AddIndicators = true)]
@@ -16,9 +25,19 @@ namespace cAlgo.Robots
         [Parameter("WMA Period", MinValue = 1)]
         public int WmaPeriod { get; set; }
         
+        [Parameter("Array Size", DefaultValue = 25, MinValue = 1)]
+        public int ArraySize { get; set; }
+        
+        [Parameter("Order Size", DefaultValue = 1, MinValue = 0.01)]
+        public double OrderSize { get; set; }
+        
+        [Parameter("Stop Loss Pips", DefaultValue = 5000, MinValue = 1)]
+        public double StopLossPips { get; set; }
+        
         // Indicators //
         private WeightedMovingAverage _wma;
         private StochasticOscillator _oscillator;
+        private AverageTrueRange _atr;
         
         // Classes //
         public class CriticalPoint
@@ -47,20 +66,20 @@ namespace cAlgo.Robots
         public double oscillatorSlope;
         
         // holds all critical points
-        CriticalPoint[] StochasticCP = new CriticalPoint[8];
-        CriticalPoint[] PriceCP = new CriticalPoint[8];
+        private CriticalPoint[] StochasticCP;
+        private CriticalPoint[] PriceCP;
 
         // holds all paired critical points
-        CriticalPoint[] PairedStochasticCP = new CriticalPoint[8];
-        CriticalPoint[] PairedPriceCP = new CriticalPoint[8];
-        
+        private CriticalPoint[] PairedStochasticCP;
+        private CriticalPoint[] PairedPriceCP;
+
         // holds all type 1 critical points
-        CriticalPoint[] PairedStochasticCPType1 = new CriticalPoint[8];
-        CriticalPoint[] PairedPriceCPType1 = new CriticalPoint[8];
-        
+        private CriticalPoint[] PairedStochasticCPType1;
+        private CriticalPoint[] PairedPriceCPType1;
+
         // holds all type 2 critical points
-        CriticalPoint[] PairedStochasticCPType2 = new CriticalPoint[8];
-        CriticalPoint[] PairedPriceCPType2 = new CriticalPoint[8];
+        private CriticalPoint[] PairedStochasticCPType2;
+        private CriticalPoint[] PairedPriceCPType2;
         
         // Custom Functions //
         public CriticalPoint[] AppendOnRotation(CriticalPoint data, CriticalPoint[] original)
@@ -134,10 +153,43 @@ namespace cAlgo.Robots
 
         protected override void OnStart()
         {
+            
             _wma = Indicators.WeightedMovingAverage(Bars.ClosePrices, WmaPeriod);
             _oscillator = Indicators.StochasticOscillator(9, 1, 3, MovingAverageType.Simple);
+            _atr = Indicators.AverageTrueRange(14, MovingAverageType.Simple);
+            
+            StochasticCP = new CriticalPoint[ArraySize];
+            PriceCP = new CriticalPoint[ArraySize];
+
+            PairedStochasticCP = new CriticalPoint[ArraySize];
+            PairedPriceCP = new CriticalPoint[ArraySize];
+
+            PairedStochasticCPType1 = new CriticalPoint[ArraySize];
+            PairedPriceCPType1 = new CriticalPoint[ArraySize];
+
+            PairedStochasticCPType2 = new CriticalPoint[ArraySize];
+            PairedPriceCPType2 = new CriticalPoint[ArraySize];
         }
 
+        public double GetAverageATR(int periods)
+        {
+            if (periods <= 0)
+            {
+                Print("Error: Periods must be greater than 0.");
+                return 0;
+            }
+
+            double atrSum = 0;
+
+            for (int i = 0; i < periods; i++)
+            {
+                atrSum += _atr.Result.Last(i); // Get ATR value for each past period
+            }
+
+            double averageATR = atrSum / periods; // Calculate the average
+            return averageATR;
+        }
+        
         protected override void OnBar()
         {
             isCP(ref wmaSlope, _wma.Result.LastValue, _wma.Result.Last(2), ref PriceCP, "wma");
@@ -151,7 +203,7 @@ namespace cAlgo.Robots
             for (int i = 0; i < PriceCP.Length; i++)
             {
                 TimeSpan difference = PriceCP[i].TimePoint - StochasticCP[i].TimePoint;
-                if (Math.Abs(difference.TotalHours) <= 2)
+                if (Math.Abs(difference.TotalMinutes) <= 2)
                 {
                     wmaPairedList.Add(PriceCP[i]);
                     stochPairedList.Add(StochasticCP[i]);
@@ -182,17 +234,16 @@ namespace cAlgo.Robots
 
             double averageSlopePrice = PairedPriceCPType1Slopes.Sum();
             double averageStochPrice = PairedStochasticCPType1Slopes.Sum();
-
-            double stopLossPips = 4000.0;
             
-            if ((averageSlopePrice < 0 && averageStochPrice > 0) && _oscillator.PercentK.LastValue > 25.00 && _oscillator.PercentK.LastValue < 70.00 && inLong == false && inShort == false)
+            
+            if ((averageSlopePrice < 0 && averageStochPrice > 0) && _oscillator.PercentK.LastValue > 20.00 && _oscillator.PercentK.LastValue < 80.00 && inLong == false && inShort == false && _atr.Result.LastValue < GetAverageATR(250))
             {
-                var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, 250.0, "XAUUSD");
+                var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, OrderSize, "XAUUSD");
                 
                 if (result.IsSuccessful)
                 {
                     var position = result.Position;
-                    double stopLossPrice = position.EntryPrice - (stopLossPips * Symbol.PipSize);
+                    double stopLossPrice = position.EntryPrice - (StopLossPips * Symbol.PipSize);
                     ModifyPosition(position, stopLossPrice, position.TakeProfit);
                     Print($"Position entry price is {position.EntryPrice}");
                     inLong = true;
