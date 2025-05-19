@@ -13,6 +13,8 @@ using cAlgo.API.Internals;
  * Array Size: 1500
  * Order Size: 2
  * Stop Loss Pips: 1400
+
+ 10 min
  */
 
 namespace cAlgo.Robots
