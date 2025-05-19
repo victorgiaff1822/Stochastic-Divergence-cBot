@@ -10,7 +10,7 @@ using cAlgo.API.Internals;
 WMA P: 5
 Array Size: 2080
 Order Size: 2
-SL: 450
+SL: 440
 TP: 20
 ATR Avg: 925
 
