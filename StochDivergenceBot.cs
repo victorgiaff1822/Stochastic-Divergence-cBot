@@ -7,14 +7,14 @@ using cAlgo.API.Indicators;
 using cAlgo.API.Internals;
 
 /*
- * Best Current Settings
- * 
- * WMA Period: 4
- * Array Size: 1500
- * Order Size: 2
- * Stop Loss Pips: 1400
+WMA P: 5
+Array Size: 2080
+Order Size: 2
+SL: 450
+TP: 20
+ATR Avg: 925
 
- 10 min
+WR: 92.42761692650334%
  */
 
 namespace cAlgo.Robots
@@ -33,8 +33,15 @@ namespace cAlgo.Robots
         [Parameter("Order Size", DefaultValue = 1, MinValue = 0.01)]
         public double OrderSize { get; set; }
         
-        [Parameter("Stop Loss Pips", DefaultValue = 5000, MinValue = 1)]
+        [Parameter("Stop Loss Pips", DefaultValue = 950, MinValue = 1)]
         public double StopLossPips { get; set; }
+        
+        [Parameter("Take Profit Pips", DefaultValue = 2000, MinValue = 1)]
+        public double TakeProfitPips { get; set; }
+        
+        [Parameter("ATR Period Avg", DefaultValue = 500, MinValue = 1)]
+        public int ATRPeriodAvg { get; set; }
+        
         
         // Indicators //
         private WeightedMovingAverage _wma;
@@ -238,7 +245,7 @@ namespace cAlgo.Robots
             double averageStochPrice = PairedStochasticCPType1Slopes.Sum();
             
             
-            if ((averageSlopePrice < 0 && averageStochPrice > 0) && _oscillator.PercentK.LastValue > 20.00 && _oscillator.PercentK.LastValue < 80.00 && inLong == false && inShort == false && _atr.Result.LastValue < GetAverageATR(250))
+            if ((averageSlopePrice < 0 && averageStochPrice > 0) && _oscillator.PercentK.LastValue > 20.00 && _oscillator.PercentK.LastValue < 80.00 && inLong == false && inShort == false && _atr.Result.LastValue < GetAverageATR(ATRPeriodAvg))
             {
                 var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, OrderSize, "XAUUSD");
                 
@@ -246,7 +253,8 @@ namespace cAlgo.Robots
                 {
                     var position = result.Position;
                     double stopLossPrice = position.EntryPrice - (StopLossPips * Symbol.PipSize);
-                    ModifyPosition(position, stopLossPrice, position.TakeProfit);
+                    double takeProfitPrice = position.EntryPrice + (TakeProfitPips * Symbol.PipSize);
+                    ModifyPosition(position, stopLossPrice, takeProfitPrice);
                     Print($"Position entry price is {position.EntryPrice}");
                     inLong = true;
                 }
@@ -276,9 +284,9 @@ namespace cAlgo.Robots
                 Print("Position closed. Checking reason...");
         
                 // Check if the position was closed due to stop loss
-                if (position.StopLoss.HasValue && position.GrossProfit <= 0)
+                if ((position.StopLoss.HasValue && position.GrossProfit <= 0) || position.TakeProfit.HasValue && position.GrossProfit >= 0)
                 {
-                    Print("Stop loss triggered. Setting inLong to false.");
+                    Print("Close loss triggered. Setting inLong to false.");
                     inLong = false;
                 }
             }
